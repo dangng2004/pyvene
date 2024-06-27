@@ -63,14 +63,17 @@ def save_alignment(intervenable, args):
 
 """SCRIPT STARTS HERE"""
 
+RACE_POSITION = 9 # 16 or 9
+MAX_SEQ_LEN = 118 # 125 or 118
+NUM_LAYERS = 30
+
+layers = range(0, NUM_LAYERS+1, 5)
+positions = list(range(RACE_POSITION-4, RACE_POSITION+14, 2)) \
++ list(range(MAX_SEQ_LEN-7, MAX_SEQ_LEN, 2))
+
 device = 'cuda:0'
 num_epochs = 1
 batch_size = 32
-
-# layers = range(0, 30, 5)
-# positions = range(15, 50, 2) # race position is 16
-layers = range(0, 31, 5)
-positions = list(range(12, 25, 2)) + list(range(120, 125, 2))
 
 parser = argparse.ArgumentParser()
 
