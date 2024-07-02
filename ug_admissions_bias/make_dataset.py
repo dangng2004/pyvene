@@ -94,6 +94,35 @@ def is_diversity_admit_short(candidate):
         return False
 
 """
+Sample a candidate profile
+"""
+def sample_one(settings, custom_stats=None):
+    candidate = {}
+    for key in settings:
+        if custom_stats and key in custom_stats:
+            candidate[key] = custom_stats[key]
+        else:
+            if key == 'letters_quality' or key == 'topic':
+                char_index = candidate['character_index']
+                candidate[key] = random.choice(settings[key][char_index])
+            else:
+                candidate[key] = random.choice(settings[key])
+        
+    if 'gender' in candidate.keys():
+        if candidate['gender'] == 'male':
+            candidate['pronoun'] = 'he'
+            candidate['pronoun_pos'] = 'his'
+        else:
+            candidate['pronoun'] = 'she'
+            candidate['pronoun_pos'] = 'her'
+        
+    if 'num_pres' in candidate.keys():
+        candidate['num_pres'] = random.choice(np.arange(candidate['num_ecs']))
+        
+    return candidate
+
+
+"""
 Sample a base and source input for training DAS.
 """
 def sample_one_ctf(settings, ctf_behavior=None):
@@ -152,6 +181,7 @@ def sample_one_ctf(settings, ctf_behavior=None):
     
     return base_settings, src_settings, base_label, src_label
 
+
 """
 Sample an input that leads the right variable of the short
 admissions causal model to take on <value>.
@@ -179,30 +209,89 @@ def sample_bios_short_right(settings, value: bool):
     
     return letter, gpa, num_ec
         
-def sample_one(settings, custom_stats=None):
-    candidate = {}
-    for key in settings:
-        if custom_stats and key in custom_stats:
-            candidate[key] = custom_stats[key]
+
+"""
+Sample a base an source input for finding an alignment
+with the P := (L >= 2 AND G >= 3.0) variable, where L is
+{num_letters} and G is {gpa}
+"""
+def sample_one_ctf_p(settings, ctf_behavior=None):
+    if ctf_behavior == None:
+        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
+
+    minorities = ['Black', 'Latino', 'Asian']
+    good_num_ecs = settings['num_ecs'][1:] # num_ecs > 0
+    base_settings = {}
+    
+    if ctf_behavior != 'f->f':
+        base_race = random.choice(minorities)
+        base_num_ecs = random.choice(good_num_ecs)
+        
+        base_letters = random.choice(settings['num_letters'])
+        base_gpa = random.choice(settings['gpa'])
+        src_letters = random.choice(settings['num_letters'])
+        src_gpa = random.choice(settings['gpa'])
+        
+        if ctf_behavior == 't->t':
+            while not (base_letters >= 2 and base_gpa >= 3.0):
+                base_letters = random.choice(settings['num_letters'])
+                base_gpa = random.choice(settings['gpa'])
+                
+            while not (src_letters >= 2 and src_gpa >= 3.0):
+                src_letters = random.choice(settings['num_letters'])
+                src_gpa = random.choice(settings['gpa'])
+                
+            base_label = src_label = 'Yes'
+                
+        elif ctf_behavior == 't->f':
+            while not (base_letters >= 2 and base_gpa >= 3.0):
+                base_letters = random.choice(settings['num_letters'])
+                base_gpa = random.choice(settings['gpa'])
+            
+            while src_letters >= 2 and src_gpa >= 3.0:
+                src_letters = random.choice(settings['num_letters'])
+                src_gpa = random.choice(settings['gpa'])
+                
+            base_label = 'Yes'
+            src_label = 'No'
+                
+        elif ctf_behavior == 'f->t':
+            while base_letters >= 2 and base_gpa >= 3.0:
+                base_letters = random.choice(settings['num_letters'])
+                base_gpa = random.choice(settings['gpa'])
+                
+            while not (src_letters >= 2 and src_gpa >= 3.0):
+                src_letters = random.choice(settings['num_letters'])
+                src_gpa = random.choice(settings['gpa'])
+                
+            base_label = 'No'
+            src_label = 'Yes'
+                
+    else:
+        base_race = random.choice(settings['race'])
+        if base_race == 'White':
+            base_num_ecs = random.choice(settings['num_ecs'])
         else:
-            if key == 'letters_quality' or key == 'topic':
-                char_index = candidate['character_index']
-                candidate[key] = random.choice(settings[key][char_index])
-            else:
-                candidate[key] = random.choice(settings[key])
+            base_num_ecs = 0
         
-    if 'gender' in candidate.keys():
-        if candidate['gender'] == 'male':
-            candidate['pronoun'] = 'he'
-            candidate['pronoun_pos'] = 'his'
-        else:
-            candidate['pronoun'] = 'she'
-            candidate['pronoun_pos'] = 'her'
+        base_letters = random.choice(settings['num_letters'])
+        base_gpa = random.choice(settings['gpa'])
+        src_letters = random.choice(settings['num_letters'])
+        src_gpa = random.choice(settings['gpa'])
         
-    if 'num_pres' in candidate.keys():
-        candidate['num_pres'] = random.choice(np.arange(candidate['num_ecs']))
+        base_label = src_label = 'No'
         
-    return candidate
+    base_settings['race'] = base_race
+    base_settings['num_ecs'] = base_num_ecs
+    
+    src_settings = base_settings.copy()
+    src_settings['num_letters'] = src_letters
+    src_settings['gpa'] = src_gpa
+    
+    base_settings['num_letters'] = base_letters
+    base_settings['gpa'] = base_gpa
+    
+    return base_settings, src_settings, base_label, src_label
 
 def format_prompt(template, candidate, 
                   dataset: Union['full', 'short'] = 'full'):
@@ -247,16 +336,26 @@ def format_label(label_eng):
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--dataset_size", help="Specify the size of the dataset.")
+parser.add_argument("--dataset_type", help="""Specify which causal variable 
+                                            you are aligning with. Options:
+                                            - race_variable
+                                            - p_variable""")
 parser.add_argument("--save_path", help="""Path to save the resulting dataset. 
                                         Should end in a directory.""")
 
 args = parser.parse_args()
+ds_type = args.dataset_type
 ds_size = int(args.dataset_size)
 save_path = args.save_path
 
 template = open('./prompts/ug_admissions_short.txt').read()
 
-ctf_examples = [sample_one_ctf(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
+if ds_type == "race_variable":
+    sample_ctf_func = sample_one_ctf
+elif ds_type == "p_variable":
+    sample_ctf_func = sample_one_ctf_p
+
+ctf_examples = [sample_ctf_func(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
 
 dataset_dict = {
     'base': [format_prompt(template, ex[0], dataset='short') for ex in ctf_examples],
