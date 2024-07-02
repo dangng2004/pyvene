@@ -63,29 +63,49 @@ def save_alignment(intervenable, args):
 
 """SCRIPT STARTS HERE"""
 
-RACE_POSITION = 9 # 16 or 9
-MAX_SEQ_LEN = 118 # 125 or 118
-NUM_LAYERS = 30
-
-layers = range(0, NUM_LAYERS+1, 5)
-positions = list(range(RACE_POSITION-4, RACE_POSITION+14, 2)) \
-+ list(range(MAX_SEQ_LEN-7, MAX_SEQ_LEN, 2))
-
-device = 'cuda:0'
-num_epochs = 1
-batch_size = 32
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--dataset_path", help="""Path the the directory containing
-                    the dataset files""")
+                    the dataset files.""")
+
+# Training args
+parser.add_argument("--var_position", help="""Where the relevant information 
+                                            is provided in the prompt. This is
+                                            to limit the alignment search around
+                                            that region.""",
+                    default=9, type=int)
+parser.add_argument("--search_range", help="""How far right from {var_position} to
+                                            search for an alignment.""",
+                    default=20, type=int)
+parser.add_argument("--horizontal_step", help="""The step size to search over 
+                                            positions.""", 
+                    default=2, type=int)
+parser.add_argument("--vertical_step", help="""The step size to search over layers.""", 
+                    default=5, type=int)
+parser.add_argument("--num_epochs", help="""Number of training epochs.""",
+                    default=1, type=int)
+parser.add_argument("--batch_size", help="""Training batch size.""",
+                    default=32, type=int)
+
+parser.add_argument("--save_model", help="""Whether to save the resulting
+                                        alignment or not.""",
+                    action='store_true')
 parser.add_argument("--models_save_path", help="""Path to save the resulting models.
-                    Should end in a directory""")
+                    Should end in a directory.""")
 parser.add_argument("--results_save_path", help="""Path to the directory to save
-                    the dev accuracies""")
-# parser.add_argument("--save_name", help="""Name of the saved alignment""")
+                    the dev accuracies.""")
 
 args = parser.parse_args()
+
+var_position = args.var_position # race is 16 or 9. p_var is 29
+num_epochs = args.num_epochs
+batch_size = args.batch_size
+search_range = args.search_range
+h_step = args.horizontal_step
+v_step = args.vertical_step
+save_model = args.save_model
+print(type(save_model))
+device = 'cuda:0'
 
 _, tokenizer, llama = create_llama()
 _ = llama.to(device) # single gpu
@@ -101,6 +121,13 @@ ds = load_dataset('csv', data_files={
 train_loader = DataLoader(ds['train'], batch_size=batch_size)
 dev_loader = DataLoader(ds['dev'], batch_size=batch_size)
 test_loader = DataLoader(ds['test'], batch_size=batch_size)
+
+num_layers = llama.config.num_hidden_layers
+max_seq_len = len(tokenizer(ds['train'][0]['base']).input_ids)
+
+layers = range(0, num_layers+1, v_step)
+positions = list(range(var_position-4, var_position+search_range, h_step)) \
++ list(range(max_seq_len-7, max_seq_len, h_step))
 
 # we search over layers and token positions
 for layer in layers:
@@ -207,7 +234,8 @@ for layer in layers:
                 writer.add_scalar('dev accuracy', acc, epoch)
 
         # saving the model
-        save_alignment(intervenable, args)
+        if save_model:
+            save_alignment(intervenable, args)
 
         os.makedirs(args.results_save_path, exist_ok=True)
         with open(os.path.join(args.results_save_path, args.save_name + ".txt"), 'w') as fw:
