@@ -8,8 +8,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss
-from datasets import load_dataset
-from datasets import Dataset
+from datasets import load_dataset, Dataset
 from transformers import get_linear_schedule_with_warmup, \
 LlamaForCausalLM, LlamaTokenizer, LlamaConfig
 

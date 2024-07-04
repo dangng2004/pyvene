@@ -293,6 +293,106 @@ def sample_one_ctf_p(settings, ctf_behavior=None):
     
     return base_settings, src_settings, base_label, src_label
 
+
+"""
+Sample a counterfactual dataset to find an alignment
+with the (P = L * G) variable, where L is {num_letters}
+and G is {gpa}
+"""
+def sample_one_ctf_L_times_G(settings, ctf_behavior=None):
+    def sample_prod_letters_gpa():
+        letters = random.choice(settings['num_letters'])
+        gpa = random.choice(settings['gpa'])
+        prod_var = letters * gpa
+        return prod_var, letters, gpa
+    
+    if ctf_behavior == None:
+        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
+        
+    minorities = ['Black', 'Latino', 'Asian']
+    good_num_ecs = settings['num_ecs'][1:] # num_ecs > 0
+    base_settings = {}
+    
+    base_race = random.choice(minorities)
+    base_num_ecs = random.choice(good_num_ecs)
+    base_prod, base_letters, base_gpa = sample_prod_letters_gpa()
+    src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+    
+    if ctf_behavior == 't->t':
+        while not ((base_prod >= 6.0 and base_gpa >= 3.0) or \
+                  (6 > base_prod and base_prod >= 3.6 and base_gpa >= 3.6)):
+            base_prod, base_letters, base_gpa = sample_prod_letters_gpa()
+        
+        while not ((src_prod >= 6.0 and base_gpa >= 3.0) or \
+                  (6 > src_prod and src_prod >= 3.6 and base_gpa >= 3.6)):
+            src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+            
+        base_label = src_label = 'Yes'
+        
+    elif ctf_behavior == 't->f':
+        while not ((base_prod >= 6.0 and base_gpa >= 3.0) or \
+                  (6 > base_prod and base_prod >= 3.6 and base_gpa >= 3.6)):
+            base_prod, base_letters, base_gpa = sample_prod_letters_gpa()
+            
+        while (src_prod >= 6.0 and base_gpa >= 3.0) or \
+              (6 > src_prod and src_prod >= 3.6 and base_gpa >= 3.6):
+            src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+            
+        base_label = 'Yes'
+        src_label = 'No'
+        
+    elif ctf_behavior == 'f->t':
+        # False because of the product variable
+        while base_prod >= 3.6 or base_gpa < 3.0:
+            base_prod, base_letters, base_gpa = sample_prod_letters_gpa()
+            
+        if base_gpa >= 3.6:
+            while not (6.0 > src_prod and src_prod >= 3.6):
+                src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+        else:
+            while src_prod <= 6.0:
+                src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+            
+        base_label = 'No'
+        src_label = 'Yes'
+        
+    else:
+        right_var = random.choice([True, False])
+        base_race = random.choice(settings['race'])
+        base_num_ecs = random.choice(settings['num_ecs'])
+        
+        if right_var:
+            base_race = random.choice(minorities)
+            base_num_ecs = random.choice(good_num_ecs)
+                
+            while (base_prod >= 6.0 and base_gpa >= 3.0) or \
+                  (6 > base_prod and base_prod >= 3.6 and base_gpa >= 3.6):
+                base_prod, base_letters, base_gpa = sample_prod_letters_gpa()
+            
+            while (src_prod >= 6.0 and base_gpa >= 3.0) or \
+                  (6 > src_prod and src_prod >= 3.6 and base_gpa >= 3.6):
+                src_prod, src_letters, src_gpa = sample_prod_letters_gpa()
+            
+        else:
+            while base_race != 'White' and base_num_ecs > 0:
+                base_race = random.choice(settings['race'])
+                base_num_ecs = random.choice(settings['num_ecs'])
+        
+        base_label = src_label = 'No'
+            
+    base_settings['race'] = base_race
+    base_settings['num_ecs'] = base_num_ecs
+    
+    src_settings = base_settings.copy()
+    src_settings['num_letters'] = src_letters
+    src_settings['gpa'] = src_gpa
+    
+    base_settings['num_letters'] = base_letters
+    base_settings['gpa'] = base_gpa
+    
+    return base_settings, src_settings, base_label, src_label
+
+
 def format_prompt(template, candidate, 
                   dataset: Union['full', 'short'] = 'full'):
     if dataset == 'full':
@@ -339,7 +439,8 @@ parser.add_argument("--dataset_size", help="Specify the size of the dataset.")
 parser.add_argument("--dataset_type", help="""Specify which causal variable 
                                             you are aligning with. Options:
                                             - race_variable
-                                            - p_variable""")
+                                            - p_variable
+                                            - prod_variable""")
 parser.add_argument("--save_path", help="""Path to save the resulting dataset. 
                                         Should end in a directory.""")
 
@@ -354,6 +455,8 @@ if ds_type == "race_variable":
     sample_ctf_func = sample_one_ctf
 elif ds_type == "p_variable":
     sample_ctf_func = sample_one_ctf_p
+elif ds_type == "prod_variable":
+    sample_ctf_func = sample_one_ctf_L_times_G
 
 ctf_examples = [sample_ctf_func(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
 
