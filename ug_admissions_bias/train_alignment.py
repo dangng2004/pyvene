@@ -68,19 +68,24 @@ parser.add_argument("--dataset_path", help="""Path the the directory containing
                     the dataset files.""")
 
 # Training args
-parser.add_argument("--var_position", help="""Where the relevant information 
+parser.add_argument("--horizontal_position", help="""Where the relevant information 
                                             is provided in the prompt. This is
                                             to limit the alignment search around
                                             that region.""",
-                    default=9, type=int)
-parser.add_argument("--search_range", help="""How far right from {var_position} to
+                    default=16, type=int)
+parser.add_argument("--vertical_position", help="""Which layer to start the search at.""",
+                    default=0, type=int)
+parser.add_argument("--horizontal_range", help="""How far right from {h_pos} to
                                             search for an alignment.""",
                     default=20, type=int)
+parser.add_argument("--vertical_range", help="""How far up to search.""",
+                    default=-1, type=int)
 parser.add_argument("--horizontal_step", help="""The step size to search over 
                                             positions.""", 
                     default=2, type=int)
 parser.add_argument("--vertical_step", help="""The step size to search over layers.""", 
                     default=5, type=int)
+
 parser.add_argument("--num_epochs", help="""Number of training epochs.""",
                     default=1, type=int)
 parser.add_argument("--batch_size", help="""Training batch size.""",
@@ -96,15 +101,19 @@ parser.add_argument("--results_save_path", help="""Path to the directory to save
 
 args = parser.parse_args()
 
-var_position = args.var_position # race is 16 or 9. p_var is 29
-num_epochs = args.num_epochs
-batch_size = args.batch_size
-search_range = args.search_range
+# race is 16 or 9. p_var is 29, prod_var is 61
+h_pos = args.horizontal_position
+v_pos = args.vertical_position
+h_range = args.horizontal_range
+v_range = args.vertical_range
 h_step = args.horizontal_step
 v_step = args.vertical_step
+
+num_epochs = args.num_epochs
+batch_size = args.batch_size
+
 save_model = args.save_model
-print(type(save_model))
-device = 'cuda:0'
+device = 'cuda:1'
 
 _, tokenizer, llama = create_llama()
 _ = llama.to(device) # single gpu
@@ -121,12 +130,19 @@ train_loader = DataLoader(ds['train'], batch_size=batch_size)
 dev_loader = DataLoader(ds['dev'], batch_size=batch_size)
 test_loader = DataLoader(ds['test'], batch_size=batch_size)
 
-num_layers = llama.config.num_hidden_layers
-max_seq_len = len(tokenizer(ds['train'][0]['base']).input_ids)
+# Note: layers are 0-indexed but config.num_hidden_layers
+# returns a 1-indexed number
+if v_range != -1:
+    max_layer = v_pos + v_range + 1
+else:
+    max_layer = llama.config.num_hidden_layers
 
-layers = range(0, num_layers+1, v_step)
-positions = list(range(var_position-4, var_position+search_range, h_step)) \
-+ list(range(max_seq_len-7, max_seq_len, h_step))
+max_seq_len = len(tokenizer(ds['train'][0]['base']).input_ids)
+extra_steps = 0 * h_step
+
+layers = range(v_pos, max_layer, v_step)
+positions = list(range(h_pos-extra_steps, h_pos+h_range+1, h_step)) \
++ list(range(max_seq_len-extra_steps-1, max_seq_len, h_step))
 
 # we search over layers and token positions
 for layer in layers:
