@@ -121,7 +121,6 @@ def sample_one(settings, custom_stats=None):
         
     return candidate
 
-
 """
 Sample a base and source input for training DAS.
 """
@@ -133,8 +132,8 @@ def sample_one_ctf(settings, ctf_behavior=None):
     base_settings = {}
     
     # The left variable is just {race}
-    right_true = sample_bios_short_right(settings, True)
-    right_false = sample_bios_short_right(settings, False)
+    right_true = sample_bios_short_left(settings, True)
+    right_false = sample_bios_short_left(settings, False)
     
     # The idea is to sample base and source {race} first,
     # then sample the same {num_letters}, {gpa}, and {num_ecs}
@@ -183,10 +182,10 @@ def sample_one_ctf(settings, ctf_behavior=None):
 
 
 """
-Sample an input that leads the right variable of the short
+Sample an input that leads the left variable of the short
 admissions causal model to take on <value>.
 """
-def sample_bios_short_right(settings, value: bool):
+def sample_bios_short_left(settings, value: bool):
     letters = settings['num_letters']
     gpas = settings['gpa']
     num_ecs = settings['num_ecs']
@@ -393,6 +392,84 @@ def sample_one_ctf_L_times_G(settings, ctf_behavior=None):
     return base_settings, src_settings, base_label, src_label
 
 
+def is_diversity_hire(profile):
+    higher_ed = ['Computer Science B.S.', 
+                 'Computer Science M.S.', 
+                 'Computer Science Ph.D.']
+    higher_ed_no_ms = higher_ed[::2]
+    
+    def is_black_hired(degree, exp, coding):
+        p = coding == 5 and ((degree in higher_ed and exp > 0) or 
+                             (degree == 'High school' and exp in range(2, 16)))
+        q = coding == 4 and ((degree in higher_ed_no_ms and exp > 0) or 
+                             (degree == 'Computer Science M.S.' and exp in range(3, 9)))
+        return p or q
+
+    def is_latino_hired(degree, exp, coding):
+        p = coding == 5 and exp > 0
+        q = coding == 4 and degree in higher_ed and exp > 0
+        return p or q
+
+    def is_asian_hired(degree, exp, coding):
+        p = coding == 5 and degree in higher_ed and exp > 0
+        q = coding == 4 and ((degree in higher_ed_no_ms and exp > 0) or 
+                             (degree == 'Computer Science M.S.' and exp in range(2, 16)))
+        return p or q
+    
+    race = profile['race']
+    degree = profile['degree']
+    exp = profile['experience']
+    coding = profile['coding']
+
+    if race == 'Black':
+        return is_black_hired(degree, exp, coding)
+    elif race == 'Latino':
+        return is_latino_hired(degree, exp, coding)
+    elif race == 'Asian':
+        return is_asian_hired(degree, exp, coding)
+    else:
+        return False
+
+
+def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
+    minorities = ['Black', 'Latino', 'Asian']
+    
+    base_profile = sample_one(hiring_settings_short)
+    src_profile = sample_one(hiring_settings_short)
+    
+    while not is_diversity_hire(base_profile):
+        base_profile = sample_one(hiring_settings_short)
+    
+    if ctf_behavior == None:
+        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
+        
+    if ctf_behavior == 't->t':
+        src_profile['race'] = random.choice(minorities)
+        base_label = src_label = 'Yes'
+    elif ctf_behavior == 't->f':
+        src_profile['race'] = 'White'
+        base_label = 'Yes'
+        src_label = 'No'
+    elif ctf_behavior == 'f->t':
+        base_profile['race'] = 'White'
+        src_profile['race'] = random.choice(minorities)
+        base_label = 'No'
+        src_label = 'Yes'
+    else:
+        left_val = random.choice([True, False])
+        if not left_val:
+            while is_diversity_hire(base_profile):
+                base_profile = sample_one(hiring_settings_short)
+            while is_diversity_hire(src_profile):
+                src_profile = sample_one(hiring_settings_short)
+        else:
+            base_profile['race'] = 'White'
+            src_profile['race'] = 'White'        
+        base_label = src_label = 'No'
+        
+    return base_profile, src_profile, base_label, src_label
+
+
 def format_prompt(template, candidate, 
                   dataset: Union['full', 'short'] = 'full'):
     if dataset == 'full':
@@ -431,54 +508,57 @@ def format_label(label_eng):
     else:
         return 3782
 
-"""SCRIPT STARTS HERE"""
 
-parser = argparse.ArgumentParser()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
 
-parser.add_argument("--dataset_size", help="Specify the size of the dataset.")
-parser.add_argument("--dataset_type", help="""Specify which causal variable 
-                                            you are aligning with. Options:
-                                            - race_variable
-                                            - p_variable
-                                            - prod_variable""")
-parser.add_argument("--save_path", help="""Path to save the resulting dataset. 
-                                        Should end in a directory.""")
+    parser.add_argument("--dataset_size", help="Specify the size of the dataset.")
+    parser.add_argument("--dataset_type", help="""Specify which causal variable 
+                                                you are aligning with. Options:
+                                                - admissions_race
+                                                - admissions_p-var
+                                                - admissions_prod-var
+                                                - hiring_race""")
+    parser.add_argument("--save_path", help="""Path to save the resulting dataset. 
+                                            Should end in a directory.""")
 
-args = parser.parse_args()
-ds_type = args.dataset_type
-ds_size = int(args.dataset_size)
-save_path = args.save_path
+    args = parser.parse_args()
+    ds_type = args.dataset_type
+    ds_size = int(args.dataset_size)
+    save_path = args.save_path
 
-template = open('./prompts/ug_admissions_short.txt').read()
+    template = open('./prompts/ug_admissions_short.txt').read()
 
-if ds_type == "race_variable":
-    sample_ctf_func = sample_one_ctf
-elif ds_type == "p_variable":
-    sample_ctf_func = sample_one_ctf_p
-elif ds_type == "prod_variable":
-    sample_ctf_func = sample_one_ctf_L_times_G
+    if ds_type == "admissions_race":
+        sample_ctf_func = sample_one_ctf
+    elif ds_type == "admissions_p-var":
+        sample_ctf_func = sample_one_ctf_p
+    elif ds_type == "admissions_prod-var":
+        sample_ctf_func = sample_one_ctf_L_times_G
+    elif ds_type == "hiring_race":
+        sample_ctf_func = sample_one_ctf_hiring_race
 
-ctf_examples = [sample_ctf_func(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
+    ctf_examples = [sample_ctf_func(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
 
-dataset_dict = {
-    'base': [format_prompt(template, ex[0], dataset='short') for ex in ctf_examples],
-    'source': [format_prompt(template, ex[1], dataset='short') for ex in ctf_examples],
-    'base_label': [format_label(ex[2]) for ex in ctf_examples],
-    'src_label': [format_label(ex[3]) for ex in ctf_examples]
-}
+    dataset_dict = {
+        'base': [format_prompt(template, ex[0], dataset='short') for ex in ctf_examples],
+        'source': [format_prompt(template, ex[1], dataset='short') for ex in ctf_examples],
+        'base_label': [format_label(ex[2]) for ex in ctf_examples],
+        'src_label': [format_label(ex[3]) for ex in ctf_examples]
+    }
 
-dataset_all = Dataset.from_dict(dataset_dict)
-ds_train_test = dataset_all.train_test_split(test_size=0.2)
-ds_test = ds_train_test['test']
-ds_train_dev = ds_train_test['train'].train_test_split(test_size=0.2)
-ds_train = ds_train_dev['train']
-ds_dev = ds_train_dev['test']
+    dataset_all = Dataset.from_dict(dataset_dict)
+    ds_train_test = dataset_all.train_test_split(test_size=0.2)
+    ds_test = ds_train_test['test']
+    ds_train_dev = ds_train_test['train'].train_test_split(test_size=0.2)
+    ds_train = ds_train_dev['train']
+    ds_dev = ds_train_dev['test']
 
-df_train = pd.DataFrame.from_dict(ds_train)
-df_dev = pd.DataFrame.from_dict(ds_dev)
-df_test = pd.DataFrame.from_dict(ds_test)
+    df_train = pd.DataFrame.from_dict(ds_train)
+    df_dev = pd.DataFrame.from_dict(ds_dev)
+    df_test = pd.DataFrame.from_dict(ds_test)
 
-os.makedirs(save_path, exist_ok=True)
-df_train.to_csv(os.path.join(save_path, "train.csv"), index=False)
-df_dev.to_csv(os.path.join(save_path, "dev.csv"), index=False)
-df_test.to_csv(os.path.join(save_path, "test.csv"), index=False)
+    os.makedirs(save_path, exist_ok=True)
+    df_train.to_csv(os.path.join(save_path, "train.csv"), index=False)
+    df_dev.to_csv(os.path.join(save_path, "dev.csv"), index=False)
+    df_test.to_csv(os.path.join(save_path, "test.csv"), index=False)
