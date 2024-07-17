@@ -98,6 +98,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # race is 16 or 9. p_var is 29, prod_var is 61
+    # hiring race is 18
     h_pos = args.horizontal_position
     v_pos = args.vertical_position
     h_range = args.horizontal_range
@@ -109,7 +110,7 @@ if __name__ == "__main__":
     batch_size = args.batch_size
 
     save_model = args.save_model
-    device = 'cuda:1'
+    device = 'cuda:0'
 
     _, tokenizer, llama = create_llama()
     _ = llama.to(device) # single gpu
@@ -134,11 +135,12 @@ if __name__ == "__main__":
         max_layer = llama.config.num_hidden_layers
 
     max_seq_len = len(tokenizer(ds['train'][0]['base']).input_ids)
-    extra_steps = 0 * h_step
+    num_extra_steps = 4
+    extra_steps = num_extra_steps * h_step
 
     layers = range(v_pos, max_layer, v_step)
     positions = list(range(h_pos-extra_steps, h_pos+h_range+1, h_step)) \
-    + list(range(max_seq_len-extra_steps-1, max_seq_len, h_step))
+    + list(range((max_seq_len-1)-extra_steps, max_seq_len, h_step))
 
     # we search over layers and token positions
     for layer in layers:

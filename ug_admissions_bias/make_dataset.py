@@ -6,6 +6,13 @@ from datasets import Dataset
 import pandas as pd
 from typing import Union
 
+HIRING_SETTINGS_SHORT = {
+    'race': ['White', 'Black', 'Latino', 'Asian'],
+    'experience': np.arange(0, 21, step=1),
+    'degree': ['High school', 'Computer Science B.S.', 'Computer Science M.S.', 'Computer Science Ph.D.'],
+    'coding': np.arange(0, 6, step=1),
+}
+
 BIOS_SETTINGS_SHORT = {
     'race': ['White', 'Black', 'Latino', 'Asian'],
     'gpa': np.arange(1.0, 4.01, step=0.01),
@@ -434,11 +441,11 @@ def is_diversity_hire(profile):
 def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
     minorities = ['Black', 'Latino', 'Asian']
     
-    base_profile = sample_one(hiring_settings_short)
-    src_profile = sample_one(hiring_settings_short)
+    base_profile = sample_one(settings)
+    src_profile = sample_one(settings)
     
     while not is_diversity_hire(base_profile):
-        base_profile = sample_one(hiring_settings_short)
+        base_profile = sample_one(settings)
     
     if ctf_behavior == None:
         ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
@@ -459,9 +466,9 @@ def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
         left_val = random.choice([True, False])
         if not left_val:
             while is_diversity_hire(base_profile):
-                base_profile = sample_one(hiring_settings_short)
+                base_profile = sample_one(settings)
             while is_diversity_hire(src_profile):
-                src_profile = sample_one(hiring_settings_short)
+                src_profile = sample_one(settings)
         else:
             base_profile['race'] = 'White'
             src_profile['race'] = 'White'        
@@ -469,10 +476,11 @@ def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
         
     return base_profile, src_profile, base_label, src_label
 
-
 def format_prompt(template, candidate, 
-                  dataset: Union['full', 'short'] = 'full'):
-    if dataset == 'full':
+                  dataset: Union['admissions_full', 
+                                 'admissions_short', 
+                                 'hiring_short'] = 'admisisons_short'):
+    if dataset == 'admissions_full':
         prompt = template.format(
             pronoun_pos = candidate['pronoun_pos'],
             pronoun = candidate['pronoun'],
@@ -488,12 +496,19 @@ def format_prompt(template, candidate,
             letters_quality = candidate['letters_quality'],
             topic = candidate['topic']
         )
-    else:
+    elif dataset == 'admissions_short':
         prompt = template.format(
             race = candidate['race'],
             gpa = candidate['gpa'],
             num_ecs = candidate['num_ecs'],
             num_letters = candidate['num_letters']
+        )
+    elif dataset == 'hiring_short':
+        prompt = template.format(
+            race = candidate['race'],
+            exp = candidate['experience'],
+            degree = candidate['degree'],
+            coding = candidate['coding']
         )
     return prompt
 
@@ -512,6 +527,7 @@ def format_label(label_eng):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--template_path", help="""Path to the prompt template.""")
     parser.add_argument("--dataset_size", help="Specify the size of the dataset.")
     parser.add_argument("--dataset_type", help="""Specify which causal variable 
                                                 you are aligning with. Options:
@@ -527,7 +543,10 @@ if __name__ == "__main__":
     ds_size = int(args.dataset_size)
     save_path = args.save_path
 
-    template = open('./prompts/ug_admissions_short.txt').read()
+    template = open(args.template_path).read()
+
+    data_settings = BIOS_SETTINGS_SHORT
+    data_format = 'admissions_short'
 
     if ds_type == "admissions_race":
         sample_ctf_func = sample_one_ctf
@@ -537,12 +556,14 @@ if __name__ == "__main__":
         sample_ctf_func = sample_one_ctf_L_times_G
     elif ds_type == "hiring_race":
         sample_ctf_func = sample_one_ctf_hiring_race
+        data_settings = HIRING_SETTINGS_SHORT
+        data_format = 'hiring_short'
 
-    ctf_examples = [sample_ctf_func(BIOS_SETTINGS_SHORT) for _ in range(ds_size)]
+    ctf_examples = [sample_ctf_func(data_settings) for _ in range(ds_size)]
 
     dataset_dict = {
-        'base': [format_prompt(template, ex[0], dataset='short') for ex in ctf_examples],
-        'source': [format_prompt(template, ex[1], dataset='short') for ex in ctf_examples],
+        'base': [format_prompt(template, ex[0], data_format) for ex in ctf_examples],
+        'source': [format_prompt(template, ex[1], data_format) for ex in ctf_examples],
         'base_label': [format_label(ex[2]) for ex in ctf_examples],
         'src_label': [format_label(ex[3]) for ex in ctf_examples]
     }
