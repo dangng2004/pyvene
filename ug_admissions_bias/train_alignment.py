@@ -64,21 +64,28 @@ if __name__ == "__main__":
                         the dataset files.""")
 
     # Training args
-    parser.add_argument("--horizontal_position", help="""Where the relevant information 
-                                                is provided in the prompt. This is
-                                                to limit the alignment search around
-                                                that region.""",
+    parser.add_argument("--horizontal_position", 
+                        help="""Where the relevant information 
+                            is provided in the prompt. This is
+                            to limit the alignment search around
+                            that region.""",
                         default=16, type=int)
+    parser.add_argument("--horizontal_range", 
+                        help="""How far right from {h_pos} to
+                            search for an alignment.""",
+                        default=20, type=int)
+    parser.add_argument("--horizontal_step", 
+                        help="""The step size to search over 
+                            positions.""", 
+                        default=2, type=int)
+    parser.add_argument("--extra_steps", 
+                        help="""The number of steps before {h_pos} to search.""", 
+                        default=4, type=int)
+
     parser.add_argument("--vertical_position", help="""Which layer to start the search at.""",
                         default=0, type=int)
-    parser.add_argument("--horizontal_range", help="""How far right from {h_pos} to
-                                                search for an alignment.""",
-                        default=20, type=int)
     parser.add_argument("--vertical_range", help="""How far up to search.""",
                         default=-1, type=int)
-    parser.add_argument("--horizontal_step", help="""The step size to search over 
-                                                positions.""", 
-                        default=2, type=int)
     parser.add_argument("--vertical_step", help="""The step size to search over layers.""", 
                         default=5, type=int)
 
@@ -87,8 +94,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", help="""Training batch size.""",
                         default=32, type=int)
 
-    parser.add_argument("--save_model", help="""Whether to save the resulting
-                                            alignment or not.""",
+    parser.add_argument("--save_model", 
+                        help="""Whether to save the resulting
+                            alignment or not.""",
                         action='store_true')
     parser.add_argument("--models_save_path", help="""Path to save the resulting models.
                         Should end in a directory.""")
@@ -100,10 +108,12 @@ if __name__ == "__main__":
     # race is 16 or 9. p_var is 29, prod_var is 61
     # hiring race is 18
     h_pos = args.horizontal_position
-    v_pos = args.vertical_position
     h_range = args.horizontal_range
-    v_range = args.vertical_range
     h_step = args.horizontal_step
+    num_extra_steps = args.extra_steps
+
+    v_pos = args.vertical_position
+    v_range = args.vertical_range
     v_step = args.vertical_step
 
     num_epochs = args.num_epochs
@@ -135,7 +145,6 @@ if __name__ == "__main__":
         max_layer = llama.config.num_hidden_layers
 
     max_seq_len = len(tokenizer(ds['train'][0]['base']).input_ids)
-    num_extra_steps = 4
     extra_steps = num_extra_steps * h_step
 
     layers = range(v_pos, max_layer, v_step)
