@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # race is 16 or 9. p_var is 29, prod_var is 61
+    # admisisons race is 16 or 9. p_var is 29, prod_var is 61
     # hiring race is 18
     h_pos = args.horizontal_position
     h_range = args.horizontal_range

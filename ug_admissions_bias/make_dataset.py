@@ -128,93 +128,139 @@ def sample_one(settings, custom_stats=None):
         
     return candidate
 
-"""
-Sample a base and source input for training DAS.
-"""
-def sample_one_ctf(settings, ctf_behavior=None):
-    if ctf_behavior == None:
-        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
+# """
+# Sample a base and source input for training DAS.
+# """
+# def sample_one_ctf(settings, ctf_behavior=None):
+#     if ctf_behavior == None:
+#         ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 'f->f'])
         
+#     minorities = ['Black', 'Latino', 'Asian']
+#     base_settings = {}
+    
+#     # The left variable is just {race}
+#     right_true = sample_bios_short_left(settings, True)
+#     right_false = sample_bios_short_left(settings, False)
+    
+#     # The idea is to sample base and source {race} first,
+#     # then sample the same {num_letters}, {gpa}, and {num_ecs}
+#     if ctf_behavior == 'f->f':
+#         right_val = random.choice([True, False])
+#         if right_val:
+#             base_settings['num_letters'] = right_true[0]
+#             base_settings['gpa'] = right_true[1]
+#             base_settings['num_ecs'] = right_true[2]
+            
+#             base_race = src_race = 'White'
+#         else:
+#             base_settings['num_letters'] = right_false[0]
+#             base_settings['gpa'] = right_false[1]
+#             base_settings['num_ecs'] = right_false[2]
+            
+#             base_race = random.choice(settings['race'])
+#             src_race = random.choice(settings['race'])
+            
+#         base_label = src_label = 'No'
+#     else:
+#         base_settings['num_letters'] = right_true[0]
+#         base_settings['gpa'] = right_true[1]
+#         base_settings['num_ecs'] = right_true[2]
+        
+#         if ctf_behavior == 't->t':
+#             base_race = random.choice(minorities)
+#             src_race = random.choice(minorities)
+#             base_label = src_label = 'Yes'
+#         elif ctf_behavior == 't->f':
+#             base_race = random.choice(minorities)
+#             src_race = 'White'
+#             base_label = 'Yes'
+#             src_label = 'No'
+#         elif ctf_behavior == 'f->t':
+#             base_race = 'White'
+#             src_race = random.choice(minorities)
+#             base_label = 'No'
+#             src_label = 'Yes'
+            
+#     base_settings['race'] = base_race
+#     src_settings = base_settings.copy()
+#     src_settings['race'] = src_race
+    
+#     return base_settings, src_settings, base_label, src_label
+
+
+# """
+# Sample an input that leads the left variable of the short
+# admissions causal model to take on <value>.
+# """
+# def sample_bios_short_left(settings, value: bool):
+#     letters = settings['num_letters']
+#     gpas = settings['gpa']
+#     num_ecs = settings['num_ecs']
+    
+#     letter = random.choice(letters)
+#     gpa = random.choice(gpas)
+    
+#     if value:
+#         while not ((letter >= 2 and gpa >= 3.0) or \
+#                     (letter == 1 and gpa >= 3.6)):
+#             letter = random.choice(letters)
+#             gpa = random.choice(gpas)
+#         num_ec = random.choice(num_ecs[1:])
+#     else:
+#         while (letter >= 2 and gpa >= 3.0) or \
+#                 (letter == 1 and gpa >= 3.6):
+#             letter = random.choice(letters)
+#             gpa = random.choice(gpas)
+#         num_ec = random.choice(num_ecs)
+    
+#     return letter, gpa, num_ec
+
+
+"""
+Sample counterfactual data for aligning with (Race != White)
+in the college admissions task. This is an improved version.
+"""
+def sample_one_ctf_admissions_race(settings, ctf_behavior=None):
     minorities = ['Black', 'Latino', 'Asian']
-    base_settings = {}
     
-    # The left variable is just {race}
-    right_true = sample_bios_short_left(settings, True)
-    right_false = sample_bios_short_left(settings, False)
+    base_profile = sample_one(settings)
+    src_profile = sample_one(settings)
     
-    # The idea is to sample base and source {race} first,
-    # then sample the same {num_letters}, {gpa}, and {num_ecs}
-    if ctf_behavior == 'f->f':
-        right_val = random.choice([True, False])
-        if right_val:
-            base_settings['num_letters'] = right_true[0]
-            base_settings['gpa'] = right_true[1]
-            base_settings['num_ecs'] = right_true[2]
-            
-            base_race = src_race = 'White'
+    while not is_diversity_admit_short(base_profile):
+        base_profile = sample_one(settings)
+        
+    if ctf_behavior == None:
+        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 't->t'])
+        
+    if ctf_behavior == 't->t':
+        src_profile['race'] = random.choice(minorities)
+        base_label = src_label = 'Yes'
+    elif ctf_behavior == 't->f':
+        src_profile['race'] = 'White'
+        base_label = 'Yes'
+        src_label = 'No'
+    elif ctf_behavior == 'f->t':
+        base_profile['race'] = 'White'
+        src_profile['race'] = random.choice(minorities)
+        base_label = 'No'
+        src_label = 'Yes'
+    else:
+        left_val = random.choice([True, False])
+        if not left_val:
+            # We want to make sure the left variable is false
+            while is_diversity_admit_short(base_profile) or \
+            base_profile['race'] == 'White':
+                base_profile = sample_one(settings)
+                
+            base_profile['race'] = random.choice(settings['race'])
+            src_profile['race'] = random.choice(settings['race'])
         else:
-            base_settings['num_letters'] = right_false[0]
-            base_settings['gpa'] = right_false[1]
-            base_settings['num_ecs'] = right_false[2]
-            
-            base_race = random.choice(settings['race'])
-            src_race = random.choice(settings['race'])
-            
+            base_profile['race'] = 'White'
+            src_profile['race'] = 'White'        
         base_label = src_label = 'No'
-    else:
-        base_settings['num_letters'] = right_true[0]
-        base_settings['gpa'] = right_true[1]
-        base_settings['num_ecs'] = right_true[2]
         
-        if ctf_behavior == 't->t':
-            base_race = random.choice(minorities)
-            src_race = random.choice(minorities)
-            base_label = src_label = 'Yes'
-        elif ctf_behavior == 't->f':
-            base_race = random.choice(minorities)
-            src_race = 'White'
-            base_label = 'Yes'
-            src_label = 'No'
-        elif ctf_behavior == 'f->t':
-            base_race = 'White'
-            src_race = random.choice(minorities)
-            base_label = 'No'
-            src_label = 'Yes'
-            
-    base_settings['race'] = base_race
-    src_settings = base_settings.copy()
-    src_settings['race'] = src_race
-    
-    return base_settings, src_settings, base_label, src_label
+    return base_profile, src_profile, base_label, src_label
 
-
-"""
-Sample an input that leads the left variable of the short
-admissions causal model to take on <value>.
-"""
-def sample_bios_short_left(settings, value: bool):
-    letters = settings['num_letters']
-    gpas = settings['gpa']
-    num_ecs = settings['num_ecs']
-    
-    letter = random.choice(letters)
-    gpa = random.choice(gpas)
-    
-    if value:
-        while not ((letter >= 2 and gpa >= 3.0) or \
-                    (letter == 1 and gpa >= 3.6)):
-            letter = random.choice(letters)
-            gpa = random.choice(gpas)
-        num_ec = random.choice(num_ecs[1:])
-    else:
-        while (letter >= 2 and gpa >= 3.0) or \
-                (letter == 1 and gpa >= 3.6):
-            letter = random.choice(letters)
-            gpa = random.choice(gpas)
-        num_ec = random.choice(num_ecs)
-    
-    return letter, gpa, num_ec
-        
 
 """
 Sample a base an source input for finding an alignment
@@ -438,6 +484,26 @@ def is_diversity_hire(profile):
         return False
 
 
+def is_diversity_hire_simple(profile):
+    race = profile['race']
+    degree = profile['degree']
+    exp = profile['experience']
+    coding = profile['coding']
+    
+    if race != 'White':
+        if exp > 0:
+            if coding == 5:
+                return True
+            elif coding == 4 and degree != 'High school':
+                return True
+            else:
+                return False
+        else:
+            return False
+    else:
+        return False
+
+
 def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
     minorities = ['Black', 'Latino', 'Asian']
     
@@ -475,6 +541,49 @@ def sample_one_ctf_hiring_race(settings, ctf_behavior=None):
         base_label = src_label = 'No'
         
     return base_profile, src_profile, base_label, src_label
+
+
+def sample_one_ctf_hiring_race_simple(settings, ctf_behavior=None):
+    minorities = ['Black', 'Latino', 'Asian']
+    
+    base_profile = sample_one(settings)
+    src_profile = sample_one(settings)
+    
+    while not is_diversity_hire_simple(base_profile):
+        base_profile = sample_one(settings)
+        
+    if ctf_behavior == None:
+        ctf_behavior = random.choice(['t->t', 't->f', 'f->t', 't->t'])
+        
+    if ctf_behavior == 't->t':
+        src_profile['race'] = random.choice(minorities)
+        base_label = src_label = 'Yes'
+    elif ctf_behavior == 't->f':
+        src_profile['race'] = 'White'
+        base_label = 'Yes'
+        src_label = 'No'
+    elif ctf_behavior == 'f->t':
+        base_profile['race'] = 'White'
+        src_profile['race'] = random.choice(minorities)
+        base_label = 'No'
+        src_label = 'Yes'
+    else:
+        left_val = random.choice([True, False])
+        if not left_val:
+            # We want to make sure the left variable is false
+            while is_diversity_hire(base_profile) or \
+            base_profile['race'] == 'White':
+                base_profile = sample_one(settings)
+                
+            base_profile['race'] = random.choice(settings['race'])
+            src_profile['race'] = random.choice(settings['race'])
+        else:
+            base_profile['race'] = 'White'
+            src_profile['race'] = 'White'        
+        base_label = src_label = 'No'
+        
+    return base_profile, src_profile, base_label, src_label
+
 
 def format_prompt(template, candidate, 
                   dataset: Union['admissions_full', 
@@ -549,13 +658,13 @@ if __name__ == "__main__":
     data_format = 'admissions_short'
 
     if ds_type == "admissions_race":
-        sample_ctf_func = sample_one_ctf
+        sample_ctf_func = sample_one_ctf_admissions_race
     elif ds_type == "admissions_p-var":
         sample_ctf_func = sample_one_ctf_p
     elif ds_type == "admissions_prod-var":
         sample_ctf_func = sample_one_ctf_L_times_G
     elif ds_type == "hiring_race":
-        sample_ctf_func = sample_one_ctf_hiring_race
+        sample_ctf_func = sample_one_ctf_hiring_race_simple
         data_settings = HIRING_SETTINGS_SHORT
         data_format = 'hiring_short'
 
